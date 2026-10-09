@@ -45,4 +45,12 @@ describe('provider login self-check entry', () => {
             backend: { probe: { ok: false, error: { code: null, message: 'Failed to fetch' } } },
         });
     });
+
+    it('checks the same-origin proxy upstream and does not mistake an HTTP error for success', async () => {
+        vi.stubGlobal('window', {});
+        const fetchMock = vi.fn().mockResolvedValue({ status: 502, ok: false });
+        vi.stubGlobal('fetch', fetchMock);
+        await expect(runLoginSelfCheck('netease', '/api/netease')).resolves.toMatchObject({ backend: { probe: { ok: false, httpStatus: 502 } } });
+        expect(fetchMock).toHaveBeenCalledWith('/api/netease/login/status', expect.objectContaining({ mode: 'same-origin', credentials: 'omit' }));
+    });
 });

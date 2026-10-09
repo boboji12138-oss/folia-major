@@ -207,8 +207,13 @@ describe('neteaseProvider', () => {
         [803, 'confirmed'],
         [800, 'expired'],
     ])('maps QR code %s to %s', async (code, state) => {
-        vi.mocked(neteaseApi.checkQr).mockResolvedValue({ code } as any);
+        vi.mocked(neteaseApi.checkQr).mockResolvedValue({ code, ...(code === 803 ? { cookie: 'MUSIC_U=test-session' } : {}) } as any);
         await expect(neteaseProvider.auth!.checkQr!('key')).resolves.toMatchObject({ state });
+    });
+
+    it('does not confirm a QR response that has no session', async () => {
+        vi.mocked(neteaseApi.checkQr).mockResolvedValue({ code: 803 } as any);
+        await expect(neteaseProvider.auth!.checkQr!('key')).resolves.toMatchObject({ state: 'error', detail: { code: 803 } });
     });
 
     it('keeps the backend code and message on an unmapped QR response', async () => {

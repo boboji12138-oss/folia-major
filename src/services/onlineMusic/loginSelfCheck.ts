@@ -20,12 +20,14 @@ const probeRemoteApi = async (providerId: OnlineProviderId, remoteBase: string):
     const timer = controller ? setTimeout(() => controller.abort(), WEB_PROBE_TIMEOUT_MS) : null;
     let probe: NonNullable<LoginSelfCheckResult['backend']>['probe'];
     try {
-        const response = await fetch(`${remoteBase.replace(/\/$/, '')}/`, {
-            mode: 'no-cors',
+        const isNeteaseProxy = remoteBase === '/api/netease';
+        const response = await fetch(`${remoteBase.replace(/\/$/, '')}/${isNeteaseProxy ? 'login/status' : ''}`, {
+            mode: isNeteaseProxy ? 'same-origin' : 'no-cors',
+            credentials: 'omit',
             cache: 'no-store',
             signal: controller?.signal,
         });
-        probe = { ok: true, httpStatus: response.status || null, durationMs: Date.now() - startedAt, error: null };
+        probe = { ok: !isNeteaseProxy || response.ok, httpStatus: response.status || null, durationMs: Date.now() - startedAt, error: isNeteaseProxy && !response.ok ? { code: null, message: `NetEase proxy returned HTTP ${response.status}` } : null };
     } catch (error) {
         probe = {
             ok: false,
