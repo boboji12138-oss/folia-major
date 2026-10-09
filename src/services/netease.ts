@@ -33,7 +33,7 @@ const getConfiguredApiBase = () => {
     return process.env.VITE_NETEASE_API_BASE;
   }
 
-  return null;
+  return '/api/netease';
 };
 
 /** 网页版配置的远端 API 地址（自检与诊断报告用）；桌面版走内嵌后端，返回 null。 */
@@ -103,10 +103,12 @@ const getApiBase = async () => {
 const fetchWithCreds = async (endpoint: string, options: RequestInit = {}) => {
   const base = await getApiBase();
   const url = `${base}${endpoint}`;
-  // Ensure we send credentials to persist session (cookies)
+  const usesSameOriginProxy = base === '/api/netease';
+  // 同源代理通过显式会话头恢复账号，不依赖 Safari 的跨站 Cookie。
   const defaultOptions: RequestInit = {
     ...options,
-    mode: 'cors',
+    mode: usesSameOriginProxy ? 'same-origin' : 'cors',
+    credentials: usesSameOriginProxy ? 'omit' : 'include',
   };
 
   // Selective Timestamp: Only for login, user, and playlist detail endpoints
@@ -122,8 +124,7 @@ const fetchWithCreds = async (endpoint: string, options: RequestInit = {}) => {
     finalUrl = `${finalUrl}${separator}timestamp=${Date.now()}`;
   }
 
-  // Note: For Vercel hosted APIs, we rely on the `cookie` query param if cross-site cookies are blocked,
-  // or `credentials: 'include'` if the server allows it. 
+  // 外部/Docker/桌面配置保留既有传输协议；Vercel 代理避免把会话写进 URL。
 
   const storedCookie = readProviderSessionValue('netease', 'cookie', ['netease_cookie']);
 
@@ -139,7 +140,7 @@ const fetchWithCreds = async (endpoint: string, options: RequestInit = {}) => {
       let anonCookie = readProviderSessionValue('netease', 'anonymous_cookie', ['netease_anonymous_cookie']);
       if (!anonCookie && !endpoint.startsWith('/register/anonimous')) {
         try {
-          const anonRes = await fetch(`${base}/register/anonimous?timestamp=${Date.now()}`).then(r => r.json());
+          const anonRes = await fetch(`${base}/register/anonimous?timestamp=${Date.now()}`, { credentials: 'omit' }).then(r => r.json());
           if (anonRes && typeof anonRes.cookie === 'string' && anonRes.cookie) {
             anonCookie = anonRes.cookie;
             writeProviderSessionValue('netease', 'anonymous_cookie', anonRes.cookie);
@@ -153,15 +154,20 @@ const fetchWithCreds = async (endpoint: string, options: RequestInit = {}) => {
   }
 
   if (cookieToUse) {
-    // Append cookie to URL
-    const sep = finalUrl.includes('?') ? '&' : '?';
-    finalUrl = `${finalUrl}${sep}cookie=${encodeURIComponent(cookieToUse)}`;
+    if (usesSameOriginProxy) {
+      const headers = new Headers(defaultOptions.headers);
+      headers.set('X-Netease-Cookie', cookieToUse);
+      defaultOptions.headers = headers;
+    } else {
+      const sep = finalUrl.includes('?') ? '&' : '?';
+      finalUrl = `${finalUrl}${sep}cookie=${encodeURIComponent(cookieToUse)}`;
+    }
   }
 
   const target = endpoint.split('?')[0];
   let res: Response;
   try {
-    res = await fetch(finalUrl, { ...defaultOptions, credentials: 'include' });
+    res = await fetch(finalUrl, { ...defaultOptions, signal: options.signal ?? AbortSignal.timeout(25_000) });
   } catch (error) {
     // 连 API 本身都没连上（本地后端退出、远端 API 不可达），不是网易上游的失败：说清是哪个接口，原始错误挂在 cause 上。
     throw new Error(`NetEase API request ${target} failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
@@ -573,11 +579,11 @@ export const neteaseApi = {
   },
 
   createQr: async (key: string) => {
-    return fetchWithCreds(`/login/qr/create?key=${key}&qrimg=true`);
+    return fetchWithCreds(`/login/qr/create?key=${encodeURIComponent(key)}&qrimg=true`);
   },
 
   checkQr: async (key: string) => {
-    return fetchWithCreds(`/login/qr/check?key=${key}`);
+    return fetchWithCreds(`/login/qr/check?key=${encodeURIComponent(key)}`);
   },
 
   getLoginStatus: async () => {

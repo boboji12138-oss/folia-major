@@ -121,7 +121,7 @@ const describeQrResponse = (response: any): string => (
  * 这类失败没拿到网易的回应、二维码仍然有效（transient，会话会接着轮询），其中连接被重置单独标出原因。
  */
 const qrFailureOf = (response: any): Extract<QrLoginState, { state: 'error' }> => {
-    const networkFailure = response?.code === 502 && isNetworkFailureMessage(response?.msg);
+    const networkFailure = response?.code === 502 && (response?.transient === true || isNetworkFailureMessage(response?.msg));
     return {
         state: 'error',
         message: describeQrResponse(response),
@@ -425,12 +425,14 @@ export const neteaseProvider: OnlineMusicProvider = {
                 case 803:
                     if (typeof response?.cookie === 'string' && response.cookie) {
                         writeProviderSessionValue('netease', 'cookie', response.cookie);
+                        return { state: 'confirmed' };
                     }
-                    return { state: 'confirmed' };
+                    return { state: 'error', message: 'NetEase QR confirmation did not return a session', detail: { code: 803 } };
                 // 风控（8821 等）、上游网络错误（502）与别的返回码都带着原始 code 与原文交给会话。
                 default: return qrFailureOf(response);
             }
         },
+        getQrTtlMs: () => 175_000,
         async getQrLoginDiagnostics() {
             return collectLoginBackendDiagnostics('netease', [
                 `session: login cookie=${yesNo(Boolean(readProviderSessionValue('netease', 'cookie', ['netease_cookie'])))}, anonymous cookie=${yesNo(Boolean(readProviderSessionValue('netease', 'anonymous_cookie', ['netease_anonymous_cookie'])))}`,

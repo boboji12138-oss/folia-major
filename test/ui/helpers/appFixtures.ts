@@ -424,11 +424,11 @@ export async function installBaseState(
   });
 }
 
-export async function mockNeteaseApi(page: Page, mode: MockNeteaseMode) {
+export async function mockNeteaseApi(page: Page, mode: MockNeteaseMode, prefix = '/__mock_netease__') {
   let qrConfirmed = false;
-  await page.route('**/__mock_netease__/**', async route => {
+  await page.route(`**${prefix}/**`, async route => {
     const url = new URL(route.request().url());
-    const endpoint = url.pathname.replace('/__mock_netease__', '');
+    const endpoint = url.pathname.replace(prefix, '');
 
     if (mode === 'guest' && endpoint === '/login/qr/key') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { unikey: 'fixture-qr-key' } }) });

@@ -6,6 +6,7 @@ import { commandPinyinPlugin } from './dev/pinyin/commandPinyinPlugin.mjs';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execSync } from 'child_process';
 import fs from 'fs';
+import neteaseProxy from './api-ts/netease';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,6 +74,10 @@ function devLyricProxyPlugin() {
     configureServer(server: ViteDevServer) {
       server.middlewares.use(async (req, res, next) => {
         const requestUrl = new URL(req.url ?? '/', 'http://localhost');
+        if (requestUrl.pathname.startsWith('/api/netease/')) {
+          await neteaseProxy(req, res);
+          return;
+        }
         if (requestUrl.pathname !== '/api/lyric-proxy') {
           next();
           return;
@@ -246,7 +251,7 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg'],
+        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png'],
         devOptions: {
           enabled: true
         },
@@ -264,7 +269,11 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
           theme_color: '#09090b',
           background_color: '#09090b',
           display: 'standalone',
+          start_url: '/',
+          scope: '/',
           icons: [
+            { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+            { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
             {
               src: 'icon.svg',
               sizes: '512x512',
@@ -276,6 +285,8 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
       })
     ],
     define: {
+      // Vercel 网页始终同源；现有远端 VITE_NETEASE_API_BASE 仍供服务端代理选择上游。
+      ...(process.env.VERCEL === '1' ? { 'import.meta.env.VITE_NETEASE_API_BASE': JSON.stringify('/api/netease') } : {}),
       '__COMMIT_HASH__': JSON.stringify(commitHash + commitSuffix),
       '__GIT_BRANCH__': JSON.stringify(gitBranch),
       '__APP_VERSION__': JSON.stringify(JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8')).version),

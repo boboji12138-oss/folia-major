@@ -1,6 +1,7 @@
 {
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':(exclude)docs/CODEMAP.md'",
   "rewrites": [
+    { "source": "/api/netease/:path*", "destination": "/api/netease?path=/:path*" },
     { "source": "/api/qq/:path*", "destination": "/api/qq?path=/:path*" }
   ]
 }
